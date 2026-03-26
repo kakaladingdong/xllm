@@ -429,19 +429,17 @@ void Batch::process_sample_output(const RawForwardOutput& raw_output,
     }
   }
 
-        seq_mm_embeddings.reserve(output_tensor_size);
-        for (int i = mm_embedding_idx;
-             i < mm_embedding_idx + output_tensor_size;
-             i++) {
-          CHECK_LT(i, raw_output.mm_embeddings.size());
-          seq_mm_embeddings.push_back(raw_output.mm_embeddings[i]);
-        }
-        seq->update_mm_embeddings(seq_mm_embeddings);
-        // we only support complete mm embedding in one iteration now
-        CHECK(seq->finished());
+  for (size_t output_idx = 0; output_idx < output_targets_.size();
+       ++output_idx) {
+    const auto& target = output_targets_[output_idx];
+    auto* seq = target.sequence;
+    CHECK(seq != nullptr);
 
-        mm_embedding_idx += output_tensor_size;
-        output_idx++;
+    if (!target.from_sample_slot) {
+      if (seq->finished()) {
+        continue;
+      }
+      if (update_sequence_state(seq, replace_fake_token)) {
         continue;
       }
     }
