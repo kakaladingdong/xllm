@@ -1302,6 +1302,11 @@ inline void deserialize_raw_forward_input(const char*& buffer,
 
   // read dit input
   read_dit_forward_input(buffer, input_params.dit_forward_input);
+#if defined(USE_NPU)
+  if (device_buffer != nullptr && stream != nullptr) {
+    stream->synchronize();
+  }
+#endif
 }
 
 inline void serialize_raw_forward_input(const RawForwardInput& input,
@@ -1797,13 +1802,9 @@ void ForwardSharedMemoryManager::raw_input_read(ForwardInput& input,
       static_cast<char*>(base_address()) + sizeof(ControlMetadata);
   uint64_t total_size;
   read_data(data_ptr, total_size);
-<<<<<<< HEAD
   deserialize_raw_forward_input(
       data_ptr, total_size, input, device, stream_.get());
 
-=======
-  deserialize_raw_forward_input(data_ptr, total_size, input, device);
->>>>>>> d5dce7a (feat: support QwenImageEditPlus pipeline with embedding infer.)
   return;
 }
 

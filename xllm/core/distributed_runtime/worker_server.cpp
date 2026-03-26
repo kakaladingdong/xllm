@@ -159,7 +159,6 @@ void WorkerServer::create_server(
   worker_service->set_worker(std::move(worker));
   bool create_shm =
       options.enable_shm() && input_shm_manager && output_shm_manager;
-  LOG(INFO) << "create_shm is: " << create_shm;
   if (create_shm) {
     worker_service->create_polling_shm_thread(std::move(input_shm_manager),
                                               std::move(output_shm_manager));

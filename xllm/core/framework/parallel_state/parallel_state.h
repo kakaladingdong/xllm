@@ -63,8 +63,8 @@ torch::Tensor scatter(torch::Tensor input,
                       int dim = -1);
 
 std::function<torch::Tensor()> all_to_all_4D(const torch::Tensor& input_,
-                                             int scatter_idx,
-                                             int gather_idx,
+                                             int32_t scatter_idx,
+                                             int32_t gather_idx,
                                              bool is_sync,
                                              ProcessGroup* pg);
 

@@ -407,13 +407,27 @@ void Batch::process_sample_output(const RawForwardOutput& raw_output,
     int64_t mm_embedding_idx = 0;
     const auto sequences = get_sequences();
     for (auto* seq : sequences) {
-      if (n_images > 0) {
-        std::vector<torch::Tensor> seq_mm_embeddings;
-        // if we want to return the full embeding of images and prompts,
-        // the output is a single embedding tensor, else it would be a vector of
-        // image embeddings
-        int64_t output_tensor_size =
-            FLAGS_enable_return_mm_full_embeddings ? 1 : n_images;
+      int64_t n_images = seq->get_mm_data().size();
+      if (n_images <= 0) {
+        continue;
+      }
+      std::vector<torch::Tensor> seq_mm_embeddings;
+      // if we want to return the full embeding of images and prompts,
+      // the output is a single embedding tensor, else it would be a vector of
+      // image embeddings
+      int64_t output_tensor_size =
+        FLAGS_enable_return_mm_full_embeddings ? 1 : n_images;
+      seq_mm_embeddings.reserve(output_tensor_size);
+      for (int i = mm_embedding_idx; i < mm_embedding_idx + output_tensor_size; ++i) {
+        CHECK_LT(i, raw_output.mm_embeddings.size());
+        seq_mm_embeddings.push_back(raw_output.mm_embeddings[i]);
+      }
+      seq->update_mm_embeddings(seq_mm_embeddings);
+      // we only support complete mm embedding in one iteration now
+      CHECK(seq->finished());
+      mm_embedding_idx += output_tensor_size;
+    }
+  }
 
         seq_mm_embeddings.reserve(output_tensor_size);
         for (int i = mm_embedding_idx;

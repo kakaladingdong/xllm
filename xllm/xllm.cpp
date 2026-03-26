@@ -74,6 +74,7 @@ std::string get_model_type(const std::filesystem::path& model_path) {
   JsonReader reader;
   // for llm, vlm and rec models, the config.json file is in the model path
   std::filesystem::path config_json_path = model_path / "config.json";
+  std::filesystem::path model_index_json_path = model_path / "model_index.json";
 
   if (std::filesystem::exists(config_json_path)) {
     reader.parse(config_json_path);
@@ -90,6 +91,15 @@ std::string get_model_type(const std::filesystem::path& model_path) {
                  << ", it should contain model_type or model_name key.";
     }
     return model_type.value();
+  } else if (std::filesystem::exists(model_index_json_path)) {
+    reader.parse(model_index_json_path);
+    auto model_type = reader.value<std::string>("_class_name");
+    if (!model_type.has_value()) {
+      LOG(FATAL) << "Please check model_index.json file in model path: "
+                 << model_path << ", it should contain _class_name key";
+    }
+    return model_type.value();
+
   } else {
     LOG(FATAL) << "Please check config.json or model_index.json file, one of "
                   "them should exist in the model path: "

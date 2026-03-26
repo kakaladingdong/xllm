@@ -28,8 +28,8 @@ namespace xllm {
 // dit related forward input params
 struct DiTForwardInput {
   bool valid() const {
-    return prompt_embeds.defined() || pooled_prompt_embeds.defined() ||
-           images.defined();
+    return prompts.size() > 0 || prompt_embeds.defined() ||
+           pooled_prompt_embeds.defined() || images.defined();
   }
 
   void save_with_prefix(std::string prefix) const {

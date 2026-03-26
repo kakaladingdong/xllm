@@ -153,7 +153,7 @@ std::unique_ptr<ProcessGroup> create_process_group(
 
 #if defined(USE_NPU)
 // TODO: This function is used by DiT models, since the DiT communication group
-// info have already been caculated by rank_generator, we only need to pass the
+// info have already been calculated by rank_generator, we only need to pass the
 // info to create the process groups. For any device that want to reuse the
 // function and dit process groups, please implement the corresponding
 // ProcessGroupImpl construct function.

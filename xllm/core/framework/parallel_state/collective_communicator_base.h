@@ -32,13 +32,11 @@ class CollectiveCommunicatorBase {
 
   virtual ~CollectiveCommunicatorBase() = default;
 
-  // 纯虚接口
   virtual void create_process_groups(const std::string& master_addr,
                                      const torch::Device& device) = 0;
 
   virtual const ParallelArgs* parallel_args() = 0;
 
-  // 获取基本信息
   int get_global_rank() const { return global_rank_; }
   int get_world_size() const { return world_size_; }
 

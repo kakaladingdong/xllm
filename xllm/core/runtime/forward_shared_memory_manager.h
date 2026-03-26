@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <memory>
+
 #include "dit_forward_params.h"
 #include "forward_params.h"
 #include "params_utils.h"

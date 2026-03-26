@@ -105,12 +105,21 @@ bool DiTWorkerImpl::init_model(const std::string& model_weights_path,
 
   auto tensor_options = torch::dtype(dtype_).device(device_);
   DiTCacheConfig cache_config = parse_dit_cache_from_flags();
+
+  auto model_type = loader->get_model_type();
+
+  if (!ModelRegistry::has_dit_model_factory(model_type)) {
+    LOG(WARNING) << "could not find model_type: " << model_type
+                 << ", using model_id: " << options_.model_id() << " instead.";
+    model_type = options_.model_id();
+  }
+
   dit_context_ = DiTModelContext(parallel_args_,
                                  std::move(loader->get_model_args()),
                                  std::move(loader->get_quant_args()),
                                  tensor_options,
                                  cache_config,
-                                 options_.model_id());
+                                 model_type);
 
   dit_model_ = create_dit_model(dit_context_);
   CHECK(dit_model_ != nullptr) << "Failed to create model.";

@@ -337,12 +337,11 @@ class QwenImageEditPlusPipelineImpl : public QwenImagePipelineBaseImpl {
             << input.condition_images.dim() << "s tensor";
       }
     }
-
     double height_size = images.size(2);
     double width_size = images.size(3);
     int64_t num_images_per_prompt = 1;
 
-    double aspect_ratio = height_size / width_size;
+    double aspect_ratio = width_size / height_size;
     auto [calculated_width, calculated_height] =
         calculate_dimensions(1024 * 1024, aspect_ratio);
 
@@ -363,11 +362,12 @@ class QwenImageEditPlusPipelineImpl : public QwenImagePipelineBaseImpl {
 
     if (images.defined() && !(images.size(1) == latent_channels_)) {
       for (size_t i = 0; i < image_list.size(); i++) {
+        aspect_ratio =
+            static_cast<double>(image_list[i].size(2)) / image_list[i].size(1);
         auto [condition_width, condition_height] =
             calculate_dimensions(CONDITION_IMAGE_SIZE, aspect_ratio);
         auto [vae_width, vae_height] =
             calculate_dimensions(VAE_IMAGE_SIZE, aspect_ratio);
-
         condition_image_sizes.push_back({condition_width, condition_height});
         vae_image_sizes.push_back({vae_width, vae_height});
 
@@ -417,7 +417,7 @@ class QwenImageEditPlusPipelineImpl : public QwenImagePipelineBaseImpl {
                          height,
                          width,
                          options_,
-                         42,
+                         seed,
                          latents);
 
     std::vector<std::vector<int64_t>> main_shape = {
@@ -656,6 +656,6 @@ class QwenImageEditPlusPipelineImpl : public QwenImagePipelineBaseImpl {
 REGISTER_MODEL_ARGS(Qwen2Tokenizer, [&] {});
 TORCH_MODULE(QwenImageEditPlusPipeline);
 
-REGISTER_DIT_MODEL(Qwen_Image_Edit_2509, QwenImageEditPlusPipeline);
+REGISTER_DIT_MODEL(QwenImageEditPlusPipeline, QwenImageEditPlusPipeline);
 }  // namespace qwenimage
 }  // namespace xllm

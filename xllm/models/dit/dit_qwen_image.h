@@ -37,6 +37,7 @@ limitations under the License.
 #include "framework/model_context.h"
 #include "framework/parallel_state/parallel_state.h"
 #include "models/model_registry.h"
+#include "utils/sequence_parallel_pad_manager.h"
 
 #ifdef TORCH_HIGHER_THAN_PTA6
 #include <torch_npu/csrc/framework/OpCommand.h>
@@ -54,7 +55,6 @@ namespace qwenimage {
 
 inline torch::Tensor gather_sequence(const torch::Tensor& input_,
                                      int64_t dim,
-                                     int64_t pad,
                                      ProcessGroup* pg) {
   auto group_size = pg->world_size();
   auto input = input_.contiguous();
@@ -68,44 +68,11 @@ inline torch::Tensor gather_sequence(const torch::Tensor& input_,
   // concat
   auto output = torch::cat(tensor_list, dim);
 
-  if (pad > 0) {
-    output = output.narrow(dim, 0, output.size(dim) - pad);
-  }
-
   return output;
-}
-
-inline torch::Tensor pad_hidden_state(const torch::Tensor& hidden_state) {
-  if (hidden_state.defined()) {
-    if (hidden_state.size(1) % FLAGS_dit_sp_size != 0) {
-      int64_t pad_len =
-          FLAGS_dit_sp_size - hidden_state.size(1) % FLAGS_dit_sp_size;
-      std::vector<int64_t> pad_with_hidden_state = {0, 0, 0, pad_len, 0, 0};
-      auto padded_hidden_state =
-          torch::pad(hidden_state, pad_with_hidden_state, "constant", 0);
-      return padded_hidden_state;
-    }
-  }
-
-  return hidden_state;
-}
-
-inline torch::Tensor pad_mask(const torch::Tensor& mask) {
-  if (mask.defined()) {
-    if (mask.size(1) % FLAGS_dit_sp_size != 0) {
-      int64_t pad_len = FLAGS_dit_sp_size - mask.size(1) % FLAGS_dit_sp_size;
-      std::vector<int64_t> pad_with_mask = {0, pad_len, 0, 0};
-      auto padded_mask = torch::pad(mask, pad_with_mask, "constant", 0);
-      return padded_mask;
-    }
-  }
-
-  return mask;
 }
 
 inline torch::Tensor split_sequence(const torch::Tensor& input,
                                     int64_t dim,
-                                    bool padding,
                                     ProcessGroup* pg) {
   auto group_size = pg->world_size();
   auto rank = pg->rank();
@@ -115,13 +82,6 @@ inline torch::Tensor split_sequence(const torch::Tensor& input,
   }
 
   torch::Tensor input_ = input;
-  if (padding) {
-    if (input_.size(1) % FLAGS_dit_sp_size != 0) {
-      int64_t pad_len = FLAGS_dit_sp_size - input_.size(1) % FLAGS_dit_sp_size;
-      std::vector<int64_t> pad_with = {0, 0, 0, pad_len, 0, 0};
-      input_ = torch::pad(input_, pad_with, "constant", 0);
-    }
-  }
 
   int64_t dim_size = input_.size(dim);
 
@@ -1469,6 +1429,20 @@ class QwenDoubleStreamAttnProcessor2_0Impl : public torch::nn::Module {
     auto img_freqs = std::get<0>(image_rotary_emb);
     auto txt_freqs = std::get<1>(image_rotary_emb);
 
+    SequenceParallelPadManager::getInstance().unpad_tensor(
+        txt_query, /*tensor_name=*/"encoder_hidden_states", /*dim=*/1);
+    SequenceParallelPadManager::getInstance().unpad_tensor(
+        txt_key, /*tensor_name=*/"encoder_hidden_states", /*dim=*/1);
+    SequenceParallelPadManager::getInstance().unpad_tensor(
+        txt_value, /*tensor_name=*/"encoder_hidden_states", /*dim=*/1);
+
+    SequenceParallelPadManager::getInstance().unpad_tensor(
+        img_query, /*tensor_name=*/"hidden_states", /*dim=*/1);
+    SequenceParallelPadManager::getInstance().unpad_tensor(
+        img_key, /*tensor_name=*/"hidden_states", /*dim=*/1);
+    SequenceParallelPadManager::getInstance().unpad_tensor(
+        img_value, /*tensor_name=*/"hidden_states", /*dim=*/1);
+
     img_query = apply_rotary_emb_qwen(img_query, img_freqs, false);
     img_key = apply_rotary_emb_qwen(img_key, img_freqs, false);
     txt_query = apply_rotary_emb_qwen(txt_query, txt_freqs, false);
@@ -1504,6 +1478,12 @@ class QwenDoubleStreamAttnProcessor2_0Impl : public torch::nn::Module {
     auto chunks = torch::split(joint_hidden_states, {seq_txt, seq_img}, 1);
     auto txt_attn_output = chunks[0];
     auto img_attn_output = chunks[1];
+
+    txt_attn_output = SequenceParallelPadManager::getInstance().pad_tensor(
+        txt_attn_output, /*tensor_name=*/"encoder_hidden_states", /*dim=*/1);
+
+    img_attn_output = SequenceParallelPadManager::getInstance().pad_tensor(
+        img_attn_output, /*tensor_name=*/"hidden_states", /*dim=*/1);
 
     // Apply output projections
     img_attn_output = attn_->to_out_->forward(img_attn_output);
@@ -1925,11 +1905,6 @@ class QwenImageTransformer2DModelImpl : public torch::nn::Module {
       const std::unordered_map<std::string, torch::Tensor>& attention_kwargs =
           {},
       const std::vector<torch::Tensor>& controlnet_block_samples = {}) {
-    // padding mask for sequence parallel scene
-    auto padded_encoder_hidden_states_mask =
-        pad_mask(encoder_hidden_states_mask);
-    auto padded_encoder_hidden_states = pad_hidden_state(encoder_hidden_states);
-
     auto new_hidden_states = img_in_->forward(hidden_states);
     auto new_timestep = timestep.to(new_hidden_states.dtype());
     torch::Tensor modulate_index;
@@ -1956,8 +1931,29 @@ class QwenImageTransformer2DModelImpl : public torch::nn::Module {
     } else {
       modulate_index = torch::Tensor();
     }
+
+    auto origin_text_seq_len = encoder_hidden_states.size(1);
+
+    // padding mask for sequence parallel scene
+    auto padded_encoder_hidden_states_mask =
+        SequenceParallelPadManager::getInstance().pad_tensor(
+            encoder_hidden_states_mask,
+            /*tensor_name=*/"encoder_hidden_states_mask",
+            /*dim=*/1);
+
     auto new_encoder_hidden_states =
-        txt_norm_->forward(padded_encoder_hidden_states);
+        SequenceParallelPadManager::getInstance().pad_tensor(
+            encoder_hidden_states,
+            /*tensor_name=*/"encoder_hidden_states",
+            /*dim=*/1);
+
+    new_hidden_states = SequenceParallelPadManager::getInstance().pad_tensor(
+        new_hidden_states, /*tensor_name=*/"hidden_states", /*dim=*/1);
+
+    modulate_index = SequenceParallelPadManager::getInstance().pad_tensor(
+        modulate_index, /*tensor_name=*/"modulate_index", /*dim=*/1);
+
+    new_encoder_hidden_states = txt_norm_->forward(new_encoder_hidden_states);
     new_encoder_hidden_states = txt_in_->forward(new_encoder_hidden_states);
 
     // Use the encoder_hidden_states sequence length for RoPE computation and
@@ -1970,10 +1966,10 @@ class QwenImageTransformer2DModelImpl : public torch::nn::Module {
     std::tuple<torch::Tensor, torch::Tensor> image_rotary_emb;
     if (use_layer3d_rope_) {
       image_rotary_emb = pos_embed_3d_rope_->forward(
-          img_shapes, text_seq_len, new_hidden_states.device());
+          img_shapes, origin_text_seq_len, new_hidden_states.device());
     } else {
       image_rotary_emb = pos_embed_->forward(img_shapes,
-                                             text_seq_len,
+                                             origin_text_seq_len,
                                              new_hidden_states.device(),
                                              /*max_txt_seq_len=*/std::nullopt);
     }
@@ -1995,16 +1991,13 @@ class QwenImageTransformer2DModelImpl : public torch::nn::Module {
     if (FLAGS_dit_sp_size > 1) {
       new_hidden_states = split_sequence(new_hidden_states,
                                          /*dim=*/1,
-                                         /*padding=*/true,
                                          parallel_args_.dit_sp_group_);
       new_encoder_hidden_states = split_sequence(new_encoder_hidden_states,
                                                  /*dim=*/1,
-                                                 /*padding=*/true,
                                                  parallel_args_.dit_sp_group_);
       if (modulate_index.defined()) {
         modulate_index = split_sequence(modulate_index,
                                         /*dim=*/1,
-                                        /*padding=*/0,
                                         parallel_args_.dit_sp_group_);
       }
     }
@@ -2017,7 +2010,6 @@ class QwenImageTransformer2DModelImpl : public torch::nn::Module {
 
     torch::Tensor original_hidden_states = new_hidden_states;
     torch::Tensor original_encoder_hidden_states = new_encoder_hidden_states;
-
     // Step start: prepare inputs (hidden_states, original_hidden_states)
     TensorMap step_in_map = {
         {"hidden_states", new_hidden_states},
@@ -2079,7 +2071,7 @@ class QwenImageTransformer2DModelImpl : public torch::nn::Module {
     new_hidden_states = proj_out_->forward(new_hidden_states);
     if (FLAGS_dit_sp_size > 1) {
       new_hidden_states = gather_sequence(
-          new_hidden_states, 1, 0, parallel_args_.dit_sp_group_);
+          new_hidden_states, /*dim=*/1, parallel_args_.dit_sp_group_);
     }
     return new_hidden_states;
   }
