@@ -22,6 +22,7 @@ limitations under the License.
 #include "llm/qwen3_next.h"
 #elif defined(USE_NPU)
 #include "dit/pipeline_flux.h"                 // IWYU pragma: keep
+#include "dit/pipeline_flux2.h"                 // IWYU pragma: keep
 #include "dit/pipeline_flux_control.h"         // IWYU pragma: keep
 #include "dit/pipeline_flux_fill.h"            // IWYU pragma: keep
 #include "dit/pipeline_qwenimage_edit_plus.h"  // IWYU pragma: keep
@@ -44,6 +45,8 @@ limitations under the License.
 #include "llm/npu/qwen3.h"                     // IWYU pragma: keep
 #include "llm/npu/qwen3_eagle3.h"              // IWYU pragma: keep
 #include "llm/npu/qwen3_moe.h"                 // IWYU pragma: keep
+#include "llm/npu/mistral.h"                   // IWYU pragma: keep
+#include "llm/npu/mistral3.h"                  // IWYU pragma: keep
 #include "rec/onerec.h"                        // IWYU pragma: keep
 #include "vlm/npu/glm4v.h"                     // IWYU pragma: keep
 #include "vlm/npu/glm4v_moe.h"                 // IWYU pragma: keep

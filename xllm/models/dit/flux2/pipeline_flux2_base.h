@@ -31,7 +31,7 @@ limitations under the License.
 #include "core/framework/state_dict/utils.h"
 #include "models/dit/flowmatch_euler_discrete_scheduler.h"
 #include "models/model_registry.h"
-// #include "mistral3_encoder.h"
+#include "models/llm/npu/mistral3.h"
 #include "transformer_flux2.h"
 
 namespace xllm {
@@ -607,7 +607,7 @@ class Flux2PipelineBaseImpl : public torch::nn::Module {
   }
 
  protected:
-  // Mistral3EncoderModel mistral3_{nullptr};
+  Mistral3ForConditionalGeneration mistral3_{nullptr};
   torch::Device device_ = torch::kCPU;
   torch::ScalarType dtype_;
   std::unique_ptr<Tokenizer> tokenizer_;

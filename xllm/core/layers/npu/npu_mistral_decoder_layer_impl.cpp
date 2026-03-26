@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "npu_mistral_decoder_layer_impl.h"
+#include ".h"
 
 #include <glog/logging.h>
 #include <mstx/ms_tools_ext.h>
